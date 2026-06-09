@@ -1,7 +1,7 @@
 ## Compile on Raspberry Pi
 
 ```bash
-g++ -std=c++17 -O2 -pthread pi_udp_camera.cpp -o pi_udp_camera
+g++ -O3 -std=c++17 -static server.cpp -o static_server -pthread
 ```
 
 ***
