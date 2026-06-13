@@ -1,8 +1,10 @@
 ## Compile on Raspberry Pi
 
-sudo apt install rpicam-apps
+
 
 ```bash
+sudo apt install rpicam-apps
+
 g++ -O3 -std=c++17 -static pi_udp_camera.cpp -o pi_udp_camera -pthread
 ```
 
