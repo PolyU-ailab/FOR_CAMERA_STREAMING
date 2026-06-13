@@ -11,6 +11,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -29,6 +30,14 @@ struct __attribute__((packed)) UdpJpegHeader {
     uint32_t total_len;
     uint32_t offset;
     uint16_t chunk_len;
+};
+
+struct Config {
+    std::string server_ip;
+    int udp_port = 5005;
+    int width = 640;
+    int height = 480;
+    int fps = 30;
 };
 
 static void signal_handler(int) {
@@ -145,7 +154,6 @@ static void camera_udp_sender_thread(const std::string& cmd,
                     if (accum.size() > 1) {
                         accum.erase(accum.begin(), accum.end() - 1);
                     }
-
                     break;
                 }
 
@@ -155,7 +163,6 @@ static void camera_udp_sender_thread(const std::string& cmd,
                     if (soi > 0) {
                         accum.erase(accum.begin(), accum.begin() + soi);
                     }
-
                     break;
                 }
 
@@ -177,7 +184,6 @@ static void camera_udp_sender_thread(const std::string& cmd,
                 }
 
                 frame_id++;
-
                 accum.erase(accum.begin(), accum.begin() + eoi + 2);
             }
         } else {
@@ -201,49 +207,94 @@ static void camera_udp_sender_thread(const std::string& cmd,
     g_running = false;
 }
 
+static bool load_config(const std::string& filename, Config& cfg) {
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+        std::cerr << "Failed to open config file: " << filename << "\n";
+        return false;
+    }
+
+    std::string line;
+    while (std::getline(file, line)) {
+        // Skip empty lines
+        if (line.empty()) {
+            continue;
+        }
+
+        // Skip comment lines
+        std::string trimmed = line;
+        size_t first_non_ws = trimmed.find_first_not_of(" \t\r\n");
+        if (first_non_ws == std::string::npos) {
+            continue;
+        }
+        if (trimmed[first_non_ws] == '#') {
+            continue;
+        }
+
+        std::istringstream iss(line);
+
+        // server_ip is required
+        if (!(iss >> cfg.server_ip)) {
+            continue;
+        }
+
+        // Optional values
+        if (!(iss >> cfg.udp_port)) {
+            cfg.udp_port = 5005;
+        }
+        if (!(iss >> cfg.width)) {
+            cfg.width = 640;
+        }
+        if (!(iss >> cfg.height)) {
+            cfg.height = 480;
+        }
+        if (!(iss >> cfg.fps)) {
+            cfg.fps = 30;
+        }
+
+        return true; // Successfully loaded first valid config line
+    }
+
+    std::cerr << "No valid configuration found in: " << filename << "\n";
+    return false;
+}
+
 int main(int argc, char* argv[]) {
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
 
-    if (argc < 2) {
-        std::cerr << "Usage:\n"
-                  << "  " << argv[0]
-                  << " <server_ip> [udp_port] [width] [height] [fps] [chunk_size]\n\n"
-                  << "Example for cam1:\n"
-                  << "  " << argv[0] << " 192.168.1.100 5005 640 480 30\n\n"
-                  << "Server mapping from your code:\n"
-                  << "  cam1 -> UDP 5005 -> http://SERVER_IP:8080/cam1\n"
-                  << "  cam2 -> UDP 5006 -> http://SERVER_IP:8080/cam2\n"
-                  << "  cam3 -> UDP 5007 -> http://SERVER_IP:8080/cam3\n";
-        return 1;
+    std::string config_file = "config.txt";
+    if (argc >= 2) {
+        config_file = argv[1];
     }
 
-    std::string server_ip = argv[1];
+    Config cfg;
 
-    int udp_port = 5005;
-    int width = 640;
-    int height = 480;
-    int fps = 30;
+    if (!load_config(config_file, cfg)) {
+        std::cerr << "Usage:\n"
+                  << "  " << argv[0] << " [config_file]\n\n"
+                  << "Config format:\n"
+                  << "  <server_ip> [udp_port] [width] [height] [fps]\n\n"
+                  << "Example config.txt:\n"
+                  << "  192.168.1.100 5005 640 480 30\n";
+        return 1;
+    }
 
     // Keep below normal Ethernet MTU to avoid IP fragmentation.
     // Header is 18 bytes, so packet size is about 1418 bytes by default.
     size_t chunk_size = 1400;
 
-    if (argc >= 3) udp_port = std::atoi(argv[2]);
-    if (argc >= 5) {
-        width = std::atoi(argv[3]);
-        height = std::atoi(argv[4]);
+    if (cfg.udp_port <= 0 || cfg.udp_port > 65535) {
+        std::cerr << "Invalid UDP port: " << cfg.udp_port << "\n";
+        return 1;
     }
-    if (argc >= 6) fps = std::atoi(argv[5]);
-    if (argc >= 7) chunk_size = static_cast<size_t>(std::atoi(argv[6]));
 
-    if (chunk_size == 0 || chunk_size > 2030) {
-        std::cerr << "Invalid chunk size. Use 1 to 2030.\n";
+    if (cfg.width <= 0 || cfg.height <= 0 || cfg.fps <= 0) {
+        std::cerr << "Invalid width/height/fps in config file.\n";
         return 1;
     }
 
     int udp_sock = socket(AF_INET, SOCK_DGRAM, 0);
-
     if (udp_sock < 0) {
         perror("socket");
         return 1;
@@ -258,10 +309,10 @@ int main(int argc, char* argv[]) {
 
     sockaddr_in server_addr {};
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(udp_port);
+    server_addr.sin_port = htons(cfg.udp_port);
 
-    if (inet_pton(AF_INET, server_ip.c_str(), &server_addr.sin_addr) != 1) {
-        std::cerr << "Invalid server IP address: " << server_ip << "\n";
+    if (inet_pton(AF_INET, cfg.server_ip.c_str(), &server_addr.sin_addr) != 1) {
+        std::cerr << "Invalid server IP address: " << cfg.server_ip << "\n";
         close(udp_sock);
         return 1;
     }
@@ -271,26 +322,28 @@ int main(int argc, char* argv[]) {
         << " -t 0"
         << " --nopreview"
         << " --codec mjpeg"
-        << " --width " << width
-        << " --height " << height
-        << " --framerate " << fps
+        << " --width " << cfg.width
+        << " --height " << cfg.height
+        << " --framerate " << cfg.fps
         << " -o - 2>/tmp/pi_cam_udp.log";
+
+    std::cout << "Loaded config from: " << config_file << "\n\n";
 
     std::cout << "Starting camera command:\n"
               << cmd.str() << "\n\n";
 
     std::cout << "Sending UDP MJPEG stream to "
-              << server_ip
+              << cfg.server_ip
               << ":"
-              << udp_port
+              << cfg.udp_port
               << "\n";
 
     std::cout << "Resolution: "
-              << width
+              << cfg.width
               << "x"
-              << height
+              << cfg.height
               << " @ "
-              << fps
+              << cfg.fps
               << " FPS\n";
 
     std::cout << "UDP payload chunk size: "
@@ -300,6 +353,5 @@ int main(int argc, char* argv[]) {
     camera_udp_sender_thread(cmd.str(), udp_sock, server_addr, chunk_size);
 
     close(udp_sock);
-
     return 0;
 }
