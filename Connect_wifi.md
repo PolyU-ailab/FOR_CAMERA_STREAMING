@@ -216,3 +216,109 @@ nmcli -p -f general,wifi-properties device show wlp2s0
 ```
 
 `GENERAL.NM-MANAGED: yes` indicates NetworkManager is handling it.
+
+
+Got it, you want a Raspberry Pi CLI setup for **WPA2-Enterprise** using **PEAP + MSCHAPv2**, with **CA certificate set to “Do not validate.”** Here’s the practical `nmcli` way.
+
+> ⚠️ Security note: “Do not validate CA certificate” can work, but it is less secure because your Pi may send credentials to a rogue/fake access point. PEAP/MSCHAPv2 normally relies on validating the RADIUS server certificate to prevent that. [\[security.s...change.com\]](https://security.stackexchange.com/questions/182530/is-it-possible-for-an-802-1x-network-peap-mschapv2-to-have-no-certificate), [\[community.cisco.com\]](https://community.cisco.com/t5/network-access-control/about-peap-need-to-install-certificates/td-p/4768871)
+
+## 1. Check your Wi-Fi interface name
+
+```bash
+nmcli device status
+```
+
+Usually on Raspberry Pi it is:
+
+```bash
+wlan0
+```
+
+## 2. Create the WPA2-Enterprise connection
+
+Replace:
+
+* `YOUR_SSID`
+* `YOUR_USERNAME`
+* `YOUR_PASSWORD`
+
+```bash
+sudo nmcli connection add type wifi \
+  ifname wlan0 \
+  con-name "YOUR_SSID" \
+  ssid "YOUR_SSID"
+```
+
+Then configure PEAP/MSCHAPv2:
+
+```bash
+sudo nmcli connection modify "YOUR_SSID" \
+  wifi-sec.key-mgmt wpa-eap \
+  802-1x.eap peap \
+  802-1x.phase2-auth mschapv2 \
+  802-1x.identity "YOUR_USERNAME" \
+  802-1x.password "YOUR_PASSWORD" \
+  802-1x.system-ca-certs no \
+  802-1x.ca-cert ""
+```
+
+This matches the usual NetworkManager WPA2-Enterprise settings for PEAP/MSCHAPv2, including setting `wifi-sec.key-mgmt` to `wpa-eap`. [\[askubuntu.com\]](https://askubuntu.com/questions/262491/connect-to-a-wpa2-enterprise-connection-via-cli-no-desktop), [\[kitsugo.com\]](https://kitsugo.com/guide/mschapv2-on-networkmanager/)
+
+## 3. Connect
+
+```bash
+sudo nmcli connection up "YOUR_SSID"
+```
+
+## 4. Full example
+
+```bash
+sudo nmcli connection add type wifi \
+  ifname wlan0 \
+  con-name "SchoolWiFi" \
+  ssid "SchoolWiFi"
+
+sudo nmcli connection modify "SchoolWiFi" \
+  wifi-sec.key-mgmt wpa-eap \
+  802-1x.eap peap \
+  802-1x.phase2-auth mschapv2 \
+  802-1x.identity "student123" \
+  802-1x.password "mypassword" \
+  802-1x.system-ca-certs no \
+  802-1x.ca-cert ""
+
+sudo nmcli connection up "SchoolWiFi"
+```
+
+## If it keeps asking for password or fails
+
+Try restarting NetworkManager:
+
+```bash
+sudo systemctl restart NetworkManager
+sudo nmcli connection up "YOUR_SSID"
+```
+
+If your Raspberry Pi OS does not have NetworkManager enabled, check:
+
+```bash
+systemctl status NetworkManager
+```
+
+Install/enable if needed:
+
+```bash
+sudo apt update
+sudo apt install network-manager
+sudo systemctl enable NetworkManager
+sudo systemctl start NetworkManager
+```
+
+## Debug command
+
+```bash
+journalctl -u NetworkManager -f
+```
+
+That will show why authentication fails in real time.
+
