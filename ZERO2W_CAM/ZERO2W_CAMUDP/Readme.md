@@ -85,7 +85,7 @@ This is reliable, standard, and works well for servers.
 
 ***
 
-# Option 1 (Recommended): Create a `systemd` service
+# Create a `systemd` service
 
 ## 1) Compile your C++ program
 
