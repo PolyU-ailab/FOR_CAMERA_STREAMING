@@ -368,7 +368,7 @@ int main(int argc, char* argv[]) {
     // cam1 = UDP 5005
     // cam2 = UDP 5006
     // cam3 = UDP 5007
-    int cameraCount = 3;
+    int cameraCount = 100;
 
     if (argc >= 2) {
         cameraCount = std::stoi(argv[1]);
