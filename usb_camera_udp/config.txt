@@ -1,0 +1,2 @@
+# server_ip udp_port width height fps camera_device input_format
+95.40.85.248 5045 640 480 30 auto mjpeg
