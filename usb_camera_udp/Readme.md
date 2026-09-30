@@ -7,7 +7,7 @@ The program:
 1. Searches `/dev/video0` through `/dev/video63` for a usable camera.
 2. Checks that the selected device is a valid V4L2 video-capture device.
 3. Starts FFmpeg to read video from the camera.
-4. extracts complete JPEG images from the FFmpeg output.
+4. Extracts complete JPEG images from the FFmpeg output.
 5. Splits every JPEG image into small UDP packets.
 6. Sends those packets to a receiver/server on the network.
 
@@ -385,7 +385,328 @@ If a firewall is enabled on the receiver, allow the configured UDP port accordin
 
 ---
 
-## 13. Troubleshooting
+## 13. Run Automatically at Boot with systemd
+
+Once the sender works when started manually, you can install it as a `systemd` service. This makes it start automatically whenever the Raspberry Pi boots and restarts it if it crashes.
+
+> **Test the program manually before creating the service.** If `./usb_camera_udp` does not work from a terminal, running it through `systemd` will not fix it.
+
+### 13.1 Find your Linux username
+
+Run:
+
+```bash
+whoami
+```
+
+Remember the result. Common usernames include `pi`, `ubuntu`, or a username chosen during Raspberry Pi OS setup.
+
+The examples below use `ubuntu`. If your username is different, replace `ubuntu` in the service file with your actual username.
+
+### 13.2 Create the application directory
+
+Create a permanent location for the program:
+
+```bash
+sudo mkdir -p /opt/usb-camera-udp
+```
+
+Copy the compiled program and configuration file into it:
+
+```bash
+sudo cp usb_camera_udp /opt/usb-camera-udp/
+sudo cp config.txt /opt/usb-camera-udp/
+```
+
+Make sure the executable can be run:
+
+```bash
+sudo chmod +x /opt/usb-camera-udp/usb_camera_udp
+```
+
+Give your Linux user ownership of the application files. Replace `ubuntu` if necessary:
+
+```bash
+sudo chown -R ubuntu:ubuntu /opt/usb-camera-udp
+```
+
+Confirm that both required files are present:
+
+```bash
+ls -l /opt/usb-camera-udp
+```
+
+You should see:
+
+```text
+config.txt
+usb_camera_udp
+```
+
+Test the installed copy before creating the service:
+
+```bash
+cd /opt/usb-camera-udp
+./usb_camera_udp
+```
+
+Press `Ctrl+C` after confirming that frames are being sent.
+
+### 13.3 Create the service file
+
+Create the service definition:
+
+```bash
+sudo nano /etc/systemd/system/usb-camera-udp.service
+```
+
+Paste the following content:
+
+```ini
+[Unit]
+Description=USB Camera UDP JPEG Sender
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/usb-camera-udp
+ExecStart=/opt/usb-camera-udp/usb_camera_udp /opt/usb-camera-udp/config.txt
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Before saving, replace this line if your username is not `ubuntu`:
+
+```ini
+User=ubuntu
+```
+
+For example, if `whoami` printed `pi`, use:
+
+```ini
+User=pi
+```
+
+Save and exit from `nano`:
+
+1. Press `Ctrl+O`.
+2. Press `Enter`.
+3. Press `Ctrl+X`.
+
+### 13.4 Reload systemd
+
+Tell `systemd` to load the new service file:
+
+```bash
+sudo systemctl daemon-reload
+```
+
+Run this command again whenever you edit `usb-camera-udp.service`.
+
+### 13.5 Enable automatic startup
+
+Enable the service so it starts during future boots:
+
+```bash
+sudo systemctl enable usb-camera-udp.service
+```
+
+A successful command normally creates a symbolic link for the service.
+
+### 13.6 Start the service now
+
+You do not need to reboot. Start it immediately:
+
+```bash
+sudo systemctl start usb-camera-udp.service
+```
+
+### 13.7 Check the service status
+
+Run:
+
+```bash
+sudo systemctl status usb-camera-udp.service
+```
+
+If everything is working, the output should contain:
+
+```text
+Active: active (running)
+```
+
+Press `q` to leave the status screen.
+
+### 13.8 View live service logs
+
+The program's normal output and errors are recorded in the system journal. Follow the logs in real time with:
+
+```bash
+sudo journalctl -u usb-camera-udp.service -f
+```
+
+Press `Ctrl+C` to stop following the logs. This stops only the log viewer, not the camera service.
+
+View logs from the current boot:
+
+```bash
+sudo journalctl -u usb-camera-udp.service -b
+```
+
+View the most recent 100 lines:
+
+```bash
+sudo journalctl -u usb-camera-udp.service -n 100 --no-pager
+```
+
+FFmpeg errors are still written to:
+
+```bash
+cat /tmp/usb_cam_udp_ffmpeg.log
+```
+
+### 13.9 Stop, start, or restart the service
+
+Stop it:
+
+```bash
+sudo systemctl stop usb-camera-udp.service
+```
+
+Start it:
+
+```bash
+sudo systemctl start usb-camera-udp.service
+```
+
+Restart it after changing `config.txt` or replacing the executable:
+
+```bash
+sudo systemctl restart usb-camera-udp.service
+```
+
+Check whether it is running:
+
+```bash
+sudo systemctl is-active usb-camera-udp.service
+```
+
+Check whether automatic startup is enabled:
+
+```bash
+sudo systemctl is-enabled usb-camera-udp.service
+```
+
+### 13.10 Disable automatic startup
+
+To stop the service and prevent it from starting at boot:
+
+```bash
+sudo systemctl disable --now usb-camera-udp.service
+```
+
+This does not delete the executable, configuration, or service file.
+
+### 13.11 Edit the service later
+
+Open the service file:
+
+```bash
+sudo nano /etc/systemd/system/usb-camera-udp.service
+```
+
+After saving any changes, reload and restart it:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart usb-camera-udp.service
+sudo systemctl status usb-camera-udp.service
+```
+
+### 13.12 Common systemd problems
+
+#### `status=217/USER`
+
+The username in the service file does not exist. Check your username:
+
+```bash
+whoami
+```
+
+Then correct the `User=` line.
+
+#### `status=203/EXEC`
+
+The executable path is wrong, the file is missing, or it is not executable. Check it:
+
+```bash
+ls -l /opt/usb-camera-udp/usb_camera_udp
+```
+
+Restore executable permission if necessary:
+
+```bash
+sudo chmod +x /opt/usb-camera-udp/usb_camera_udp
+```
+
+#### The service cannot open `config.txt`
+
+The provided service uses an absolute configuration path:
+
+```ini
+ExecStart=/opt/usb-camera-udp/usb_camera_udp /opt/usb-camera-udp/config.txt
+```
+
+Confirm the file exists and is readable:
+
+```bash
+ls -l /opt/usb-camera-udp/config.txt
+```
+
+#### The service cannot access the camera
+
+Check whether the configured service user belongs to the `video` group. Replace `ubuntu` if necessary:
+
+```bash
+id ubuntu
+```
+
+Add the user to the group if `video` is not listed:
+
+```bash
+sudo usermod -aG video ubuntu
+```
+
+Then reboot, or restart the relevant user session and service:
+
+```bash
+sudo reboot
+```
+
+#### The service keeps restarting
+
+Inspect both logs:
+
+```bash
+sudo journalctl -u usb-camera-udp.service -n 100 --no-pager
+cat /tmp/usb_cam_udp_ffmpeg.log
+```
+
+Also test the exact service command manually as the configured user:
+
+```bash
+cd /opt/usb-camera-udp
+./usb_camera_udp /opt/usb-camera-udp/config.txt
+```
+
+---
+
+## 14. Troubleshooting
 
 ### Problem: `config.txt` cannot be opened
 
@@ -535,7 +856,7 @@ Replace it with the clean, plain-text `usb_camera_udp.cpp` file. Do not compile 
 
 ---
 
-## 14. Quick Start
+## 15. Quick Start
 
 If the files already exist, this is the shortest setup procedure:
 
@@ -570,7 +891,7 @@ cat /tmp/usb_cam_udp_ffmpeg.log
 
 ---
 
-## 15. Final Checklist
+## 16. Final Checklist
 
 Before expecting video at the receiver, confirm:
 
@@ -586,6 +907,9 @@ Before expecting video at the receiver, confirm:
 - [ ] The receiver understands the custom 18-byte UDP header.
 - [ ] The firewall allows the selected UDP port.
 - [ ] FFmpeg's log has been checked if capture fails.
+- [ ] The installed program works manually from `/opt/usb-camera-udp`.
+- [ ] The `User=` value in the service matches a real Linux username.
+- [ ] `usb-camera-udp.service` is enabled and active.
 
 ---
 
