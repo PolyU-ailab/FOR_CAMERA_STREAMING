@@ -36,11 +36,11 @@ const char* MQTT_SERVER = "43.198.136.97";
 const uint16_t MQTT_PORT = 1883;
 
 // Commands are received from this topic.
-const char* MQTT_TOPIC = "POLYU/CAMCONTROLLER/CAM50";
+const char* MQTT_TOPIC = "POLYU/INTERFERENCE/set_1/cam";
 
 // This ID must be unique for every device connected to
 // the MQTT broker.
-const char* MQTT_CLIENT_ID = "POLYU/CAMCONTROLLER/CAM50";
+const char* MQTT_CLIENT_ID = "POLYU/INTERFERENCE/set_1/cam";
 
 // Leave empty when the MQTT broker allows anonymous access.
 const char* MQTT_USERNAME = "";
@@ -265,8 +265,8 @@ void processFrameRateCommand(const String& message)
 //
 // Supported MQTT payloads:
 //
-// CAM|1
-// CAM|0
+// STREAM|1
+// STREAM|0
 // FRAMERATE|x
 //
 // Examples:
@@ -312,7 +312,7 @@ void mqttCallback(
     // Start streaming
     // --------------------------------------------------
 
-    if (message == "CAM|1")
+    if (message == "STREAM|1")
     {
         cameraStreaming = true;
 
@@ -340,7 +340,7 @@ void mqttCallback(
     // Stop streaming
     // --------------------------------------------------
 
-    else if (message == "CAM|0")
+    else if (message == "STREAM|0")
     {
         cameraStreaming = false;
 
@@ -368,8 +368,8 @@ void mqttCallback(
         Serial.println("UNKNOWN MQTT COMMAND");
         Serial.println();
         Serial.println("Valid commands:");
-        Serial.println("CAM|1");
-        Serial.println("CAM|0");
+        Serial.println("STREAM|1");
+        Serial.println("STREAM|0");
         Serial.println("FRAMERATE|x");
         Serial.println();
         Serial.println("Examples:");
@@ -611,7 +611,7 @@ void initCamera()
     config.pin_pwdn = PWDN_GPIO_NUM;
     config.pin_reset = RESET_GPIO_NUM;
 
-    config.xclk_freq_hz = 20000000;
+    config.xclk_freq_hz = 40000000;
     config.pixel_format = PIXFORMAT_JPEG;
 
     // Default settings when PSRAM is available.
@@ -686,14 +686,14 @@ bool sendJpegUdp(
     {
         // Process MQTT messages between UDP packets.
         //
-        // This allows CAM|0 to stop a large frame before
+        // This allows STREAM|0 to stop a large frame before
         // every UDP packet has been transmitted.
         mqttClient.loop();
 
         if (!cameraStreaming)
         {
             Serial.println(
-                "Frame transmission interrupted by CAM|0."
+                "Frame transmission interrupted by STREAM|0."
             );
 
             return false;
@@ -883,8 +883,8 @@ void setup()
     Serial.println("Camera streaming is currently OFF.");
     Serial.println();
     Serial.println("MQTT commands:");
-    Serial.println("CAM|1          Start streaming");
-    Serial.println("CAM|0          Stop streaming");
+    Serial.println("STREAM|1          Start streaming");
+    Serial.println("STREAM|0          Stop streaming");
     Serial.println("FRAMERATE|x    Set frame interval");
     Serial.println();
     Serial.println("Example: FRAMERATE|200");

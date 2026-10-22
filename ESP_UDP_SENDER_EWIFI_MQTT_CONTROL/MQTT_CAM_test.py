@@ -2,14 +2,24 @@ import paho.mqtt.client as mqtt
 
 MQTT_SERVER = "43.198.136.97"
 MQTT_PORT = 1883
-MQTT_TOPIC = "POLYU/CAMCONTROLLER/CAM50"
+MQTT_TOPIC = "POLYU/INTERFERENCE/set_1/cam"
+
+# MQTT Credentials
+MQTT_USERNAME = "labxra_server"
+MQTT_PASSWORD = "ty0YvZ5PLPXwXj3nwA18"
 
 # Must be different from the ESP32 client ID.
-MQTT_CLIENT_ID = "POLYU/CAMCONTROLLER/CAM50/PYTHON"
+MQTT_CLIENT_ID = "POLYU/INTERFERENCE/set_1/cam/PYTHON"
 
 client = mqtt.Client(
     callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
     client_id=MQTT_CLIENT_ID
+)
+
+# Set username and password
+client.username_pw_set(
+    username=MQTT_USERNAME,
+    password=MQTT_PASSWORD
 )
 
 client.connect(MQTT_SERVER, MQTT_PORT, 60)
@@ -20,10 +30,10 @@ command = input(
 ).strip().upper()
 
 if command == "ON":
-    message = "CAM|1"
+    message = "STREAM|1"
 
 elif command == "OFF":
-    message = "CAM|0"
+    message = "STREAM|0"
 
 elif command.startswith("FRAMERATE|"):
     value = command.split("|", 1)[1]
